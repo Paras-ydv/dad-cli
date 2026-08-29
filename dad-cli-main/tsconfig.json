@@ -57,5 +57,15 @@
 
     "skipLibCheck": true,
     "jsx": "react-jsx"
-  }
+  },
+  "exclude": [
+    "node_modules",
+    "**/node_modules",
+    "dist",
+    "**/dist",
+    "runtime-discovery/myProject",
+    "testpilot-graph-ui",
+    "qdrant_data",
+    "storage/collections"
+  ]
 }

@@ -1,14 +1,19 @@
 {
-  "name": "dad-agent",
+  "name": "testpilot-ai",
   "version": "0.1.0",
-  "description": "AI-powered autonomous testing agent",
+  "description": "Autonomous AI testing agent that explores and tests web apps from live runtime behaviour",
   "type": "module",
   "scripts": {
     "start": "tsx runtime-discovery/src/runAgent.ts",
     "start-headful": "tsx runtime-discovery/src/runAgent.ts --headful",
     "test-kb": "tsx testKB.ts",
     "create-collection": "tsx createCollection.ts",
-    "compile-extension": "tsc -p vscode-extension"
+    "compile-extension": "tsc -p vscode-extension",
+    "server": "npm --prefix azure-integration run start",
+    "dashboard": "npm --prefix testpilot-graph-ui run dev",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
     "@langchain/core": "^1.1.12",
