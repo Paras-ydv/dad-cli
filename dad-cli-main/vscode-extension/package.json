@@ -1,46 +1,46 @@
 {
-  "name": "dad-agent",
-  "displayName": "DAD Agent",
+  "name": "testpilot-ai",
+  "displayName": "TestPilot AI",
   "description": "Autonomous runtime discovery & integration testing agent",
-  "publisher": "dad-agent",
+  "publisher": "testpilot-ai",
   "version": "0.1.0",
   "engines": {
     "vscode": "^1.85.0"
   },
   "activationEvents": [
     "onStartupFinished",
-    "onView:dadView",
-    "onCommand:dad.start"
+    "onView:testpilotView",
+    "onCommand:testpilot.start"
   ],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "dad.start",
-        "title": "▶ Start DAD Test"
+        "command": "testpilot.start",
+        "title": "▶ Start TestPilot Test"
       }
     ],
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "dad",
-          "title": "DAD",
-          "icon": "media/dad.svg"
+          "id": "testpilot",
+          "title": "TestPilot",
+          "icon": "media/testpilot.svg"
         }
       ]
     },
     "views": {
-      "dad": [
+      "testpilot": [
         {
-          "id": "dadView",
-          "name": "DAD Controls"
+          "id": "testpilotView",
+          "name": "TestPilot Controls"
         }
       ]
     },
     "menus": {
       "explorer/context": [
         {
-          "command": "dad.start",
+          "command": "testpilot.start",
           "when": "explorerResourceIsFolder",
           "group": "navigation"
         }

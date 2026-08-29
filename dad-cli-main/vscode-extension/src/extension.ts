@@ -1,13 +1,13 @@
 import * as vscode from "vscode";
-import { runDAD } from "./dadRunner";
-import { DadViewProvider } from "./dadView";
+import { runTestPilot } from "./testpilotRunner";
+import { TestPilotViewProvider } from "./testpilotView";
 
 export function activate(context: vscode.ExtensionContext) {
-  console.log("DAD extension activating");
+  console.log("TestPilot extension activating");
 
   // Command
   context.subscriptions.push(
-    vscode.commands.registerCommand("dad.start", runDAD)
+    vscode.commands.registerCommand("testpilot.start", runTestPilot)
   );
 
   // Status bar button
@@ -15,17 +15,17 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.StatusBarAlignment.Left,
     100
   );
-  statusBarItem.text = "▶ DAD Test";
-  statusBarItem.tooltip = "Start DAD Runtime Test";
-  statusBarItem.command = "dad.start";
+  statusBarItem.text = "▶ TestPilot Test";
+  statusBarItem.tooltip = "Start a TestPilot run";
+  statusBarItem.command = "testpilot.start";
   statusBarItem.show();
   context.subscriptions.push(statusBarItem);
 
   // ✅ REGISTER VIEW PROVIDER (THIS FIXES THE ERROR)
-  const provider = new DadViewProvider(context);
+  const provider = new TestPilotViewProvider(context);
   context.subscriptions.push(
     vscode.window.registerWebviewViewProvider(
-      "dadView",
+      "testpilotView",
       provider,
       { webviewOptions: { retainContextWhenHidden: true } }
     )
