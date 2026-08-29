@@ -15,7 +15,7 @@ if (!URL) {
   console.log("[Runtime] Starting manual discovery for:", URL);
 
   // 🔹 Boot browser
-  const page = await launchBrowser();
+  const { page } = await launchBrowser(false);
   await page.goto(URL, { waitUntil: "domcontentloaded" });
   await waitForPageStability(page);
 

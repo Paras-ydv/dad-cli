@@ -1,9 +1,9 @@
 import axios from "axios"
 
 const api = axios.create({
-  baseURL: process.env.AZURE_GRAPH_API,
+  baseURL: process.env.AZURE_GRAPH_API ?? "http://localhost:5050/graph",
   headers: {
-    "x-api-key": process.env.AZURE_API_KEY
+    "x-api-key": process.env.AZURE_API_KEY ?? ""
   }
 })
 

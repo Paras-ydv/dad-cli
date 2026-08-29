@@ -1,4 +1,4 @@
-// Unified types for DAD Agent system
+// Unified types for TestPilot AI system
 export type ControlSignal = "CONTINUE" | "DEEP_TEST" | "TERMINATE";
 
 export interface ActionContract {
@@ -9,9 +9,11 @@ export interface ActionContract {
 export interface DecisionOutput {
   next_action: ActionContract | null;
   control: ControlSignal;
-  confidence?: number;
-  reasoning?: string;
-  anomalies?: AnomalyReport[];
+  confidence?: number | undefined;
+  reasoning?: string | undefined;
+  anomalies?: AnomalyReport[] | undefined;
+  /** Where the decision came from, e.g. "knowledge_base" or "exploration". */
+  source?: string | undefined;
 }
 
 export interface AnomalyReport {
@@ -45,6 +47,8 @@ export type UIState = {
   title: string;
   available_actions: any[];
   entities: Record<string, any>;
+  /** Full URL of the page this state was captured from. */
+  url?: string;
   viewport?: {
     width: number;
     height: number;
@@ -79,7 +83,7 @@ export interface AgentState {
 
   // LangGraph fields
   decision?: DecisionOutput;
-  next_action?: ActionContract;
+  next_action?: ActionContract | null;
   control?: ControlSignal;
   anomalies?: AnomalyReport[];
 
@@ -92,6 +96,7 @@ export interface AgentState {
 
   // Node outputs
   diagnosis?: any;
+  source?: string | undefined;
   execution?: {
     action_id?: string;
     parameters?: Record<string, any>;
@@ -100,5 +105,5 @@ export interface AgentState {
     reason?: string;
   };
   validation?: any;
-  reasoning?: string;
+  reasoning?: string | undefined;
 }

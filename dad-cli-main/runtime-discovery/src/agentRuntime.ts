@@ -137,7 +137,7 @@ export async function discoverUI(url: string, headless: boolean = true): Promise
       route: new URL(page.url()).pathname,
       title: await page.title(),
       available_actions: prioritizedActions.map(a => a.id),
-      entities: {}
+      entities: { url: page.url() }
     };
   } catch (error) {
     console.error("❌ UI discovery failed:", error instanceof Error ? error.message : String(error));
@@ -315,12 +315,22 @@ export async function executeAction(
                 if (inputType === "checkbox" || inputType === "radio") {
                   await elementHandle.click({ timeout: 5000, force: true });
                 } else {
-                  await elementHandle.fill("test input", { timeout: 5000 });
+                  // Use the value the decision engine generated for this field.
+                  // It was previously computed and then discarded in favour of
+                  // a literal, so every field received "test input".
+                  const value =
+                    typeof action.parameters?.value === "string" && action.parameters.value
+                      ? action.parameters.value
+                      : "test input";
+                  await elementHandle.fill(value, { timeout: 5000 });
                 }
               } else if (tagName === "select") {
                 const options = await elementHandle.evaluate((e: any) => Array.from(e.options).map((opt: any) => opt.value));
-                if (options.length > 0) {
-                  await elementHandle.selectOption(options[0], { timeout: 5000 });
+                const index =
+                  typeof action.parameters?.index === "number" ? action.parameters.index : 0;
+                const chosen = options[index] ?? options[0];
+                if (chosen !== undefined) {
+                  await elementHandle.selectOption(chosen, { timeout: 5000 });
                 }
               } else {
                 await elementHandle.click({ timeout: 5000, force: true });

@@ -1,147 +1,137 @@
-import { AgentState, DecisionOutput } from "../types.js";
+import { AgentState, DecisionOutput, ActionContract } from "../types.js";
 import type { KnowledgeItem } from "../../knowledge/schema.js";
 import { generateIntelligentInput } from "../utils/inputGenerator.js";
 
+const MIN_FIX_CONFIDENCE = 0.6;
+const MIN_PATTERN_CONFIDENCE = 0.5;
+
+/** Highest-confidence item of a given type above a threshold. */
+function bestOf(
+  memories: KnowledgeItem[],
+  type: KnowledgeItem["type"],
+  threshold: number
+): KnowledgeItem | undefined {
+  return memories
+    .filter((m) => m.type === type && (m.confidence ?? 0) > threshold)
+    .sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0))[0];
+}
+
+/**
+ * Chooses the next action.
+ *
+ * Order of preference:
+ *   1. A proven fix from the knowledge base for the current error signature.
+ *   2. A learned navigation pattern.
+ *   3. Systematic exploration of actions not yet tried in this UI state.
+ *   4. Backtracking once the current state is exhausted.
+ */
 export function decisionEngine(state: AgentState): AgentState {
   try {
     const actions = state.ui_state?.available_actions ?? [];
     const steps = state.steps ?? [];
+    const currentStateId = state.ui_state?.state_id || "unknown";
 
-    const memoryContext = (state as any).knowledge_context as {
-      memories?: KnowledgeItem[];
-      confidence?: number;
-    } | undefined;
+    const memories = state.knowledge_context?.memories as KnowledgeItem[] | undefined;
 
-    let decision: DecisionOutput;
+    let decision: DecisionOutput | undefined;
 
-    /* -----------------------------------------
-       1️⃣ ENHANCED MEMORY RESOLUTION
-    ------------------------------------------*/
+    /* ---------- 1. Proven fix from memory ---------- */
+    if (memories?.length) {
+      const fix = bestOf(memories, "fix", MIN_FIX_CONFIDENCE);
 
-    /* -----------------------------------------
-       1️⃣ ENHANCED MEMORY RESOLUTION
-    ------------------------------------------*/
+      if (fix?.solution) {
+        const confidence = fix.confidence ?? MIN_FIX_CONFIDENCE;
+        console.log(
+          `🎯 Applying proven fix: ${fix.solution} (${(confidence * 100).toFixed(0)}% confidence)`
+        );
 
-    let memoryDecisionMade = false;
+        decision = {
+          next_action: {
+            action_id: fix.solution,
+            parameters: fix.metadata?.parameters ?? {}
+          },
+          reasoning: `Applying proven fix '${fix.solution}', previously successful for a similar error signature.`,
+          control: "CONTINUE",
+          confidence,
+          source: "knowledge_base"
+        };
+      } else {
+        /* ---------- 2. Learned pattern ---------- */
+        const pattern = bestOf(memories, "pattern", MIN_PATTERN_CONFIDENCE);
 
-    if (
-      memoryContext &&
-      memoryContext.memories?.length
-    ) {
-      try {
-        // Filter by type and confidence
-        const fixes = memoryContext.memories
-          .filter(m => m.type === "fix" && (m.confidence ?? 0) > 0.6)
-          .sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0));
-
-        const patterns = memoryContext.memories
-          .filter(m => m.type === "pattern" && (m.confidence ?? 0) > 0.5)
-          .sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0));
-
-        // Prioritize proven fixes
-        if (fixes.length > 0) {
-          const best = fixes[0];
-          console.log(`🎯 Applying proven fix: ${best.solution} (${(best.confidence * 100).toFixed(0)}% confidence)`);
-
-          decision = {
-            next_action: {
-              action_id: best.solution,
-              parameters: best.metadata?.parameters || {}
-            },
-            reasoning: `Applying proven fix: ${best.solution}. This solution was previously successful for a similar error signature.`,
-            control: "CONTINUE",
-            confidence: best.confidence
-          };
-          memoryDecisionMade = true;
-        }
-        // Use patterns for guidance
-        else if (patterns.length > 0) {
-          const pattern = patterns[0];
+        if (pattern?.solution) {
+          const confidence = pattern.confidence ?? MIN_PATTERN_CONFIDENCE;
           console.log(`🔍 Following pattern: ${pattern.content}`);
 
           decision = {
-            next_action: {
-              action_id: pattern.solution || "investigate",
-              parameters: {}
-            },
-            reasoning: `Following discovered pattern: ${pattern.content}. This pattern suggests a likely path forward based on historical data.`,
+            next_action: { action_id: pattern.solution, parameters: {} },
+            reasoning: `Following discovered pattern: ${pattern.content}`,
             control: "CONTINUE",
-            confidence: pattern.confidence
+            confidence,
+            source: "knowledge_base"
           };
-          memoryDecisionMade = true;
         }
-      } catch (error) {
-        console.error("❌ Memory resolution failed:", error instanceof Error ? error.message : String(error));
-        // Fallthrough to exploration
       }
     }
 
-    /* -----------------------------------------
-       2️⃣ FALLBACK → EXPLORATION LOGIC
-    ------------------------------------------*/
+    /* ---------- 3 & 4. Exploration / backtracking ---------- */
+    if (!decision) {
+      const lastStep = steps[steps.length - 1];
 
-    if (!memoryDecisionMade) {
-      const currentStateId = state.ui_state?.state_id || "unknown";
-
-      // 🔴 Nothing discovered
       if (actions.length === 0) {
-        console.log("⚠️ No actions discovered - checking for backtrack options");
-        const canBacktrack = steps.length > 0 && !steps[steps.length - 1].action.action_id.includes("BROWSER_BACK");
+        const canBacktrack =
+          steps.length > 0 && lastStep?.action?.action_id !== "BROWSER_BACK";
 
-        if (canBacktrack) {
-          decision = {
-            next_action: { action_id: "BROWSER_BACK", parameters: {} },
-            reasoning: "No actions found on this page. Backtracking to parent state.",
-            control: "CONTINUE"
-          };
-        } else {
-          decision = {
-            next_action: null,
-            reasoning: "No available actions and cannot backtrack. Terminating.",
-            control: "TERMINATE"
-          };
-        }
+        decision = canBacktrack
+          ? {
+              next_action: { action_id: "BROWSER_BACK", parameters: {} },
+              reasoning: "No actions found on this page. Backtracking to the parent state.",
+              control: "CONTINUE",
+              confidence: 0.5,
+              source: "exploration"
+            }
+          : {
+              next_action: null,
+              reasoning: "No available actions and cannot backtrack. Terminating.",
+              control: "TERMINATE",
+              source: "exploration"
+            };
       } else {
-        // 🟢 ADAPTIVE exploration based on state history
-        const visitedStates = new Set(steps.map(s => s.state_id).filter(id => !!id));
-        const actionVisitCount = new Map<string, number>();
+        // Actions already tried while in this exact UI state.
+        const triedHere = new Set(
+          steps
+            .filter((s) => s.state_id === currentStateId)
+            .map((s) => s.action.action_id)
+        );
 
-        // Count how many times each action has been taken in THIS SPECIFIC state
-        steps.filter(s => s.state_id === currentStateId).forEach(s => {
-          const id = s.action.action_id;
-          actionVisitCount.set(id, (actionVisitCount.get(id) || 0) + 1);
-        });
-
-        // 1. Prioritize unvisited actions in the current state
-        let nextActionObj = actions.find((a: any) => !actionVisitCount.has(a.id || a));
-        let next = nextActionObj?.id || nextActionObj;
+        const next = actions
+          .map((a: any) => (typeof a === "string" ? a : a?.id))
+          .find((id: string | undefined) => !!id && !triedHere.has(id));
 
         if (!next) {
-          // 🔙 BACKTRACKING LOGIC: If current state is fully explored
-          console.log(`🔄 State ${currentStateId} fully explored. Attempting backtrack.`);
+          const backtracked = steps.some(
+            (s) => s.state_id === currentStateId && s.action.action_id === "BROWSER_BACK"
+          );
 
-          // Check if we've already backtracked from here too many times
-          const backtrackCount = steps.filter(s => s.state_id === currentStateId && s.action.action_id === "BROWSER_BACK").length;
-
-          if (backtrackCount < 1 && steps.length > 0) {
-            decision = {
-              next_action: { action_id: "BROWSER_BACK", parameters: {} },
-              reasoning: "Current state fully explored. Backtracking to discover other branches.",
-              control: "CONTINUE"
-            };
-          } else {
-            decision = {
-              next_action: null,
-              reasoning: `State ${currentStateId} and its branches fully explored.`,
-              control: "TERMINATE"
-            };
-          }
+          decision = !backtracked && steps.length > 0
+            ? {
+                next_action: { action_id: "BROWSER_BACK", parameters: {} },
+                reasoning: `State ${currentStateId} fully explored. Backtracking to find other branches.`,
+                control: "CONTINUE",
+                confidence: 0.5,
+                source: "exploration"
+              }
+            : {
+                next_action: null,
+                reasoning: `State ${currentStateId} and its branches are fully explored.`,
+                control: "TERMINATE",
+                source: "exploration"
+              };
         } else {
           console.log("🤔 Exploring action:", next);
 
-          const parameters: Record<string, any> = {
-            selector: nextActionObj?.selector || ""
-          };
+          const parameters: Record<string, any> = {};
+
           if (next.includes("input") || next.includes("textarea")) {
             parameters.value = generateIntelligentInput({
               actionId: next,
@@ -153,14 +143,15 @@ export function decisionEngine(state: AgentState): AgentState {
             parameters.checked = true;
           }
 
+          const action: ActionContract = { action_id: next, parameters };
+
           decision = {
-            next_action: {
-              action_id: next,
-              parameters
-            },
-            reasoning: `Exploring unvisited action '${next}' in state ${currentStateId}.`,
+            next_action: action,
+            reasoning: `Exploring untried action '${next}' in state ${currentStateId}.`,
             control: "CONTINUE",
-            confidence: Math.max(0.6, 1.0 - (steps.length * 0.05))
+            // Confidence decays as the run gets longer and states get staler.
+            confidence: Math.max(0.6, 1.0 - steps.length * 0.05),
+            source: "exploration"
           };
         }
       }
@@ -174,16 +165,18 @@ export function decisionEngine(state: AgentState): AgentState {
       control: decision.control
     };
   } catch (error) {
-    console.error("❌ Decision engine failed:", error instanceof Error ? error.message : String(error));
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("❌ Decision engine failed:", message);
+
     return {
       ...state,
       decision: {
         next_action: null,
-        reasoning: `Decision engine error: ${error instanceof Error ? error.message : String(error)}`,
+        reasoning: `Decision engine error: ${message}`,
         control: "TERMINATE"
       },
       next_action: null,
-      reasoning: "Emergency termination due to internal decision engine error.",
+      reasoning: "Emergency termination due to an internal decision engine error.",
       control: "TERMINATE"
     };
   }

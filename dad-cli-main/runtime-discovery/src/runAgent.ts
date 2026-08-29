@@ -1,8 +1,7 @@
 import { discoverUI, executeAction, initializeBrowser, closeBrowser, takeScreenshot } from "./agentRuntime.js";
-import { runPrompt3 } from "../../langraph/index.js";
-import { AgentState, AgentStep, ActionContract } from "./types.js";
-import { storeKnowledge } from "../../knowledge/store.js";
-import { searchKnowledge } from "../../knowledge/retrieve.js";
+import { runAgentTurn } from "../../langraph/index.js";
+import { graphTracker } from "../../langraph/graph-tracker.js";
+import { AgentState, ActionContract } from "./types.js";
 import { validateUrl } from "./urlValidator.js";
 import axios from "axios";
 import dotenv from "dotenv";
@@ -10,10 +9,19 @@ import dotenv from "dotenv";
 // Load environment variables
 dotenv.config({ path: 'runtime-discovery/.env' });
 
+const API_BASE_URL = process.env.TESTPILOT_API_URL || "http://localhost:5050";
+const API_KEY = process.env.TESTPILOT_API_KEY || process.env.API_KEY;
+
+if (!API_KEY) {
+  console.warn(
+    "⚠️ TESTPILOT_API_KEY is not set - run persistence to the backend will be rejected with 401."
+  );
+}
+
 const cosmosApi = axios.create({
-  baseURL: "http://localhost:5050",
+  baseURL: API_BASE_URL,
   headers: {
-    "x-api-key": "daddychill123supersecretkey"
+    "x-api-key": API_KEY ?? ""
   }
 });
 
@@ -61,21 +69,29 @@ if (headfulIndex !== -1) {
   args.splice(headfulIndex, 1);
 }
 
-const targetUrl = args[0];
+const rawUrl = args[0];
 
-if (!targetUrl) {
+if (!rawUrl) {
   console.error("Usage: npm run start <url> or npm run start-headful <url>");
   process.exit(1);
 }
 
+let targetUrl: string;
+
 try {
-  validateUrl(targetUrl);
+  targetUrl = validateUrl(rawUrl);
 } catch (error) {
   console.error("❌ Invalid URL:", error instanceof Error ? error.message : String(error));
   process.exit(1);
 }
 
-async function createRuntimeExecutor(targetUrl: string) {
+/** Minimum decision confidence required before an action is executed. */
+const MIN_EXECUTION_CONFIDENCE = 0.4;
+
+/** Hard cap on turns for a single run. */
+const MAX_STEPS = 100;
+
+function createRuntimeExecutor() {
   return async (action_id: string, parameters: Record<string, any>): Promise<void> => {
     const action: ActionContract = { action_id, parameters };
     await executeAction(action);
@@ -85,6 +101,9 @@ async function createRuntimeExecutor(targetUrl: string) {
 async function main() {
   const graphRunId = `run-${Date.now()}`;
   let stepIndex = 0;
+  let successfulSteps = 0;
+  let failedSteps = 0;
+  let anomaliesCount = 0;
 
   try {
     const state: AgentState = {
@@ -94,10 +113,14 @@ async function main() {
         url: targetUrl,
         browser: "chromium",
         timestamp: new Date().toISOString(),
-        execute: await createRuntimeExecutor(targetUrl)
+        execute: createRuntimeExecutor()
       },
       steps: []
     };
+
+    // One traversal graph per run. Previously this was started inside the agent
+    // graph, which produced a fresh single-node graph on every turn.
+    graphTracker.startRun(graphRunId);
 
     await insertTestRun({
       runId: graphRunId,
@@ -129,7 +152,7 @@ async function main() {
     const MAX_CONSECUTIVE_FAILURES = 5;
     const MAX_NO_ACTION_STEPS = 3;
 
-    for (let step = 0; step < 100; step++) {
+    for (let step = 0; step < MAX_STEPS; step++) {
       try {
         if (state.ui_state?.route === '/error' && step > 5) {
           console.log("🛑 Stuck in error route - terminating");
@@ -160,9 +183,22 @@ async function main() {
         }
 
         try {
-          const updatedState = await runPrompt3(state);
-          state.next_action = updatedState.next_action;
+          const updatedState = await runAgentTurn(state);
+
+          // Carry the full agent output forward. Copying only next_action
+          // dropped the anomalies and control signal, so critical failures
+          // never stopped the run and no anomaly was ever persisted.
+          state.next_action = updatedState.next_action ?? null;
+          state.anomalies = updatedState.anomalies ?? [];
+          state.diagnosis = updatedState.diagnosis;
+          state.validation = updatedState.validation;
           state.reasoning = updatedState.reasoning || updatedState.decision?.reasoning;
+
+          if (updatedState.decision) state.decision = updatedState.decision;
+          if (updatedState.knowledge_context) {
+            state.knowledge_context = updatedState.knowledge_context;
+          }
+          if (updatedState.control) state.control = updatedState.control;
         } catch (error) {
           console.error("❌ Agent logic failed:", error instanceof Error ? error.message : String(error));
           state.reasoning = `Agent logic failed during decision phase: ${error instanceof Error ? error.message : String(error)}`;
@@ -170,6 +206,20 @@ async function main() {
         }
 
         console.log("[DEBUG] Next action:", state.next_action?.action_id);
+
+        // Safety gate: refuse to act on a low-confidence decision. This lived in
+        // an executor node that was imported but never called, so it never ran.
+        const confidence = state.decision?.confidence;
+        const lowConfidence =
+          confidence !== undefined && confidence < MIN_EXECUTION_CONFIDENCE;
+
+        if (lowConfidence && state.next_action) {
+          console.log(
+            `⚠️ Skipping ${state.next_action.action_id}: confidence ${confidence!.toFixed(2)} < ${MIN_EXECUTION_CONFIDENCE}`
+          );
+          state.next_action = null;
+          state.reasoning = `Skipped: decision confidence ${confidence!.toFixed(2)} below the ${MIN_EXECUTION_CONFIDENCE} execution threshold.`;
+        }
 
         if (!state.next_action || !state.ui_state?.available_actions?.length) {
           noActionSteps++;
@@ -214,6 +264,27 @@ async function main() {
           consecutiveFailures++;
         }
 
+        // Record what actually happened so the next turn's learner node can
+        // attribute the outcome. Without this, learner always returned early.
+        state.execution = state.next_action
+          ? {
+              action_id: state.next_action.action_id,
+              parameters: state.next_action.parameters,
+              timestamp: Date.now(),
+              skipped: observation.skipped === true,
+              ...(observation.skipped ? { reason: "ACTION_NOT_EXECUTED" } : {})
+            }
+          : { skipped: true, reason: "NO_ACTION", timestamp: Date.now() };
+
+        if (!state.next_action) {
+          // An idle turn is neither a success nor a failure.
+        } else if (observation.skipped) {
+          failedSteps++;
+        } else {
+          successfulSteps++;
+        }
+        anomaliesCount += state.anomalies?.length ?? 0;
+
         // Update internal state steps for memory-based decisions
         state.steps.push({
           step: stepIndex,
@@ -247,6 +318,10 @@ async function main() {
             });
           }
         }
+        if (state.control === "TERMINATE") {
+          console.log(`🛑 Agent signalled TERMINATE: ${state.reasoning}`);
+          break;
+        }
       } catch (loopError) {
         console.error("❌ Step loop error:", loopError);
         consecutiveFailures++;
@@ -256,14 +331,21 @@ async function main() {
     await updateTestRun(graphRunId, {
       status: "completed",
       completedAt: new Date().toISOString(),
-      totalSteps: stepIndex
+      totalSteps: stepIndex,
+      successfulSteps,
+      failedSteps,
+      anomaliesCount
     });
 
   } catch (error) {
     console.error("❌ Main execution failed:", error);
   } finally {
+    // Persist the traversal graph exactly once, at the end of the run.
+    graphTracker.finishRun();
     await closeBrowser();
-    console.log(`\n✅ Run completed. Run ID: ${graphRunId}`);
+    console.log(
+      `\n✅ Run completed. Run ID: ${graphRunId} | ${stepIndex} steps, ${successfulSteps} ok, ${failedSteps} failed, ${anomaliesCount} anomalies`
+    );
   }
 }
 
