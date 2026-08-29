@@ -1,8 +1,8 @@
 import { FastifyInstance } from "fastify";
 import { analyzeImage } from "../services/azureVision.service.js";
 import { apiKeyAuth } from "../utils/auth.js";
+import { resolveScreenshotPath } from "../utils/screenshots.js";
 import fs from "fs";
-import path from "path";
 
 export async function visionRoutes(app: FastifyInstance) {
   // Protect all Vision routes
@@ -35,12 +35,11 @@ export async function visionRoutes(app: FastifyInstance) {
         return { error: "Screenshot path required" };
       }
 
-      // Validate file exists and is in screenshots directory
-      const filename = path.basename(screenshotPath);
-      const fullPath = path.resolve("../screenshots", filename);
+      // Validate the file resolves inside the screenshots directory
+      const fullPath = resolveScreenshotPath(screenshotPath);
 
-      if (!fs.existsSync(fullPath)) {
-        return { error: `Invalid screenshot path: ${filename}` };
+      if (!fullPath) {
+        return { error: "Invalid screenshot path" };
       }
 
       // Convert local file to data URL for Azure Vision
