@@ -13,8 +13,11 @@ type Props = {
 export default function StatsBanner({ nodes, metadata }: Props) {
     const stats = useMemo(() => {
         const total = nodes.length;
-        const successful = nodes.filter(n => n.status === 'success').length;
-        const failed = nodes.filter(n => n.status === 'error').length;
+        // These are React Flow nodes: the graph payload lives under `data`.
+        // Reading `n.status` directly always yielded 0 successes and 0 failures.
+        const statusOf = (n: any) => n?.data?.status ?? n?.status;
+        const successful = nodes.filter(n => statusOf(n) === 'success').length;
+        const failed = nodes.filter(n => statusOf(n) === 'error').length;
         const successRate = total > 0 ? Math.round((successful / total) * 100) : 0;
 
         let duration = "—";
@@ -31,7 +34,7 @@ export default function StatsBanner({ nodes, metadata }: Props) {
     }, [nodes, metadata]);
 
     return (
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-4 mb-6">
             <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col justify-center">
                 <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Target URL</span>
                 <span className="text-sm font-semibold text-gray-700 truncate" title={metadata.targetUrl}>
@@ -59,6 +62,13 @@ export default function StatsBanner({ nodes, metadata }: Props) {
                 <span className={`text-2xl font-black ${stats.successRate > 80 ? 'text-green-500' : stats.successRate > 50 ? 'text-yellow-500' : 'text-red-500'
                     }`}>
                     {stats.successRate}%
+                </span>
+            </div>
+
+            <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-100 flex flex-col items-center">
+                <span className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Failed</span>
+                <span className={`text-2xl font-black ${stats.failed > 0 ? 'text-red-500' : 'text-gray-300'}`}>
+                    {stats.failed}
                 </span>
             </div>
 

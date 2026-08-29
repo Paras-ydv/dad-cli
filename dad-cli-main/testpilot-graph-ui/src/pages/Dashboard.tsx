@@ -33,13 +33,21 @@ export default function Dashboard() {
     try {
       const g = await fetchGraph(runId);
 
-      const rfNodes = g.nodes.map((n: any) => ({
+      // stepIndex is absent on some nodes; `undefined * 350` is NaN, which
+      // collapses every node onto the same point. Fall back to array order and
+      // wrap into rows so long runs stay readable.
+      const PER_ROW = 6;
+      const rfNodes = g.nodes.map((n: any, i: number) => {
+        const order = Number.isFinite(n.stepIndex) ? n.stepIndex : i;
+        return {
         id: n.id,
         position: {
-          x: n.stepIndex * 350,
-          y: 250
+          x: (order % PER_ROW) * 280,
+          y: Math.floor(order / PER_ROW) * 220
         },
-        data: n,
+        // The default React Flow node renders data.label; without it every
+        // node drew as an empty box.
+        data: { ...n, label: `${order + 1}. ${n.actionTaken || "no action"}` },
         style: {
           background: n.status === "success" ? "#dcfce7" : "#fee2e2",
           border: `2px solid ${n.status === "success" ? "#22c55e" : "#ef4444"}`,
@@ -49,7 +57,8 @@ export default function Dashboard() {
           textAlign: "center" as const,
           boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)"
         }
-      }));
+        };
+      });
 
       setNodes(rfNodes);
       setEdges(g.edges.map((e: any) => ({
@@ -122,7 +131,7 @@ export default function Dashboard() {
       <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between shadow-sm z-10">
         <div className="flex items-center gap-4">
           <div className="h-10 w-10 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold text-xl">D</div>
-          <h1 className="text-xl font-black tracking-tight text-slate-800">DAD AGENT <span className="text-indigo-600">LIVE</span></h1>
+          <h1 className="text-xl font-black tracking-tight text-slate-800">TESTPILOT AI <span className="text-indigo-600">LIVE</span></h1>
         </div>
 
         <div className="flex items-center gap-3">
