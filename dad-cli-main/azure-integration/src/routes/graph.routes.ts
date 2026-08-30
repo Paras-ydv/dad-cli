@@ -1,8 +1,8 @@
 import { FastifyInstance } from "fastify";
 import { apiKeyAuth } from "../utils/auth.js";
 import { getGraph, listRuns, deleteRun } from "../services/graph.services.js";
+import { resolveScreenshotPath } from "../utils/screenshots.js";
 import fs from "fs";
-import path from "path";
 
 export async function graphRoutes(app: FastifyInstance) {
 
@@ -12,10 +12,9 @@ export async function graphRoutes(app: FastifyInstance) {
   app.get("/screenshots/:filename", async (req: any, reply) => {
     try {
       const { filename } = req.params;
-      // Look in screenshots directory relative to server root
-      const screenshotPath = path.resolve("../screenshots", filename);
+      const screenshotPath = resolveScreenshotPath(filename);
 
-      if (!fs.existsSync(screenshotPath)) {
+      if (!screenshotPath) {
         reply.code(404);
         return { error: "Screenshot not found" };
       }

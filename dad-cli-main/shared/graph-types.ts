@@ -5,6 +5,8 @@ export interface GraphNode {
   actionTaken: string;
   reasoning: string;
   timestamp: string;
+  /** Stable id of the UI state this node represents. */
+  stateId?: string;
   status: "success" | "error";
   error?: {
     message: string;

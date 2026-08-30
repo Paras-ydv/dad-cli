@@ -19,6 +19,11 @@ export async function analyzeImage(imageInput: string) {
     // For data URLs, we need to upload to a temporary location or use a different Azure Vision method
     // For now, we'll extract the base64 and use the analyze image from stream method
     const base64Data = imageInput.split(',')[1];
+
+    if (!base64Data) {
+      throw new Error("Malformed data URL: missing base64 payload");
+    }
+
     const imageBuffer = Buffer.from(base64Data, 'base64');
     
     return client.analyzeImageInStream(imageBuffer, {

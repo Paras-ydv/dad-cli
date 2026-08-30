@@ -3,7 +3,7 @@ function pad(s: string, n: number) {
 }
 
 export function renderCliSummary(report: any) {
-  console.log("\n=== DAD Agent — Error Intelligence Report ===\n");
+  console.log("\n=== TestPilot AI — Error Intelligence Report ===\n");
 
   console.log("Run:", report.run_id);
 

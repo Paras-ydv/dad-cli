@@ -1,6 +1,5 @@
 import { memoryNode } from "./nodes/memory.js";
 import { diagnoserNode } from "./nodes/diagnoser.js";
-import { executorNode } from "./nodes/executor.js";
 import { validatorNode } from "./nodes/validator.js";
 import { learnerNode } from "./nodes/learner.js";
 
@@ -9,70 +8,68 @@ import { decisionEngine } from "./nodes/decisionEngine.js";
 import { controlRouter } from "./nodes/controlRouter.js";
 import { graphTracker } from "./graph-tracker.js";
 
-// Simple state management without LangGraph
-export function buildPrompt3Graph() {
+/**
+ * One turn of the agent.
+ *
+ * The turn has two phases:
+ *
+ *   1. Reflect - interpret the observation produced by the action we took last
+ *      turn (anomaly detection -> diagnosis -> validation -> learning).
+ *   2. Plan    - retrieve relevant memory and choose the next action.
+ *
+ * Action execution itself happens in the caller, because it needs the live
+ * Playwright page and must return an Observation. The caller writes that result
+ * back onto `state.execution` so the next turn's reflect phase can learn from it.
+ *
+ * Run tracking is owned by the caller via graphTracker.startRun()/finishRun().
+ * Starting a run here would create a fresh single-node graph on every turn.
+ */
+export function buildAgentGraph() {
   return {
     invoke: async (state: any) => {
-      // Start graph tracking
-      const runId = graphTracker.startRun();
-      let currentState = { ...state, runId };
+      let currentState = { ...state };
 
       try {
-        // 1. Anomaly Detection
+        // --- Reflect on the previous turn -------------------------------
         currentState = anomalyDetector(currentState);
-
-        // 2. Diagnosis
         currentState = await diagnoserNode(currentState);
-
-        // 3. Memory
-        currentState = await memoryNode(currentState);
-
-        // 4. Decision
-        currentState = decisionEngine(currentState);
-
-        // Track decision step
-        if (currentState.decision) {
-          graphTracker.trackStep({
-            url: currentState.current_url || "unknown",
-            screenshotUrl: currentState.screenshot_url || "",
-            actionTaken: currentState.decision.next_action?.action_id || "none",
-            reasoning: currentState.decision.reasoning || "Decision made",
-            status: "success"
-          });
-        }
-
-        // 5. Executor (handled externally)
-        // 6. Validator
         currentState = await validatorNode(currentState);
-
-        // 7. Learner
         currentState = await learnerNode(currentState);
 
-        // 8. Control
+        // --- Plan the next turn -----------------------------------------
+        currentState = await memoryNode(currentState);
+        currentState = decisionEngine(currentState);
         currentState = controlRouter(currentState);
+
+        graphTracker.trackStep({
+          url: currentState.ui_state?.route || currentState.runtime?.url || "unknown",
+          screenshotUrl: currentState.screenshot_url || "",
+          actionTaken: currentState.next_action?.action_id || "none",
+          reasoning: currentState.reasoning || "Decision made",
+          status: "success",
+          stateId: currentState.ui_state?.state_id
+        });
 
         return currentState;
       } catch (error) {
-        // Track error step
         graphTracker.trackStep({
-          url: currentState.current_url || "unknown",
+          url: currentState.ui_state?.route || currentState.runtime?.url || "unknown",
           screenshotUrl: currentState.screenshot_url || "",
           actionTaken: "error",
           reasoning: "Graph execution failed",
           status: "error",
+          stateId: currentState.ui_state?.state_id,
           error: {
             message: error instanceof Error ? error.message : String(error),
-            stack: error instanceof Error ? error.stack : undefined
+            ...(error instanceof Error && error.stack ? { stack: error.stack } : {})
           }
         });
 
-        graphTracker.finishRun();
         throw error;
-      } finally {
-        if (currentState.control === "TERMINATE") {
-          graphTracker.finishRun();
-        }
       }
     }
   };
 }
+
+/** @deprecated Retained for callers still using the old name. */
+export const buildPrompt3Graph = buildAgentGraph;

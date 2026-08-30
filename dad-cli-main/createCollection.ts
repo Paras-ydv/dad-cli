@@ -6,7 +6,7 @@ const client = new QdrantClient({
 
 async function main() {
   try {
-    await client.createCollection("dad_agent_kb", {
+    await client.createCollection("testpilot_kb", {
       vectors: {
         // size: 1536,   // embedding size (OpenAI standard)
         size: 384,

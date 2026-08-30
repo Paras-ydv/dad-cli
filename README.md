@@ -1,168 +1,144 @@
-# TestPilot AI Agent
+# TestPilot AI
 
-AI-powered autonomous testing agent that intelligently explores and tests web applications using LangGraph decision-making and browser automation.
+An autonomous testing agent that explores a running web application, decides what
+to do next from live runtime behaviour, and reports what broke — with no
+pre-written test scripts.
 
-## Prerequisites
+Point it at a URL. It discovers the interactive elements on the page, picks an
+action, executes it in a real browser, checks the result against a set of
+invariants, records what it learned, and repeats. The traversal is captured as a
+state graph you can replay in a dashboard, with a screenshot and the agent's
+stated reasoning attached to every step.
 
-- **Node.js >= 18**
-- **Docker** (for Qdrant vector database)
-- **VS Code** (optional, for extension)
+```bash
+cd dad-cli-main
+npm install
+npx playwright install chromium
+npm start https://your-app.com
+```
+
+## How it works
+
+Each turn of the agent has two phases:
+
+**Reflect** — interpret what the last action produced.
+`anomalyDetector` runs three invariants over the observation (failed network
+calls, console errors, off-site navigation), `diagnoser` normalises any error
+into a stable signature, `validator` judges whether the step succeeded, and
+`learner` writes the outcome to the knowledge base.
+
+**Plan** — decide what to do next.
+`memory` retrieves semantically similar past runs from Qdrant, `decisionEngine`
+prefers a proven fix, then a learned pattern, then systematic exploration of
+untried actions, and `controlRouter` halts the run on a critical anomaly.
+
+Execution happens in the run loop rather than inside the graph, because it needs
+the live Playwright page and returns an observation the next turn reflects on.
+Actions below a confidence threshold are refused before they reach the browser.
+
+### State identity
+
+Pages are keyed by a SHA-256 hash of the pathname plus the sorted set of
+discovered action ids, so revisiting a page maps to the same node. Element ids
+are normalised to strip mutable text — counters (`Cart (3)`) and toggle state
+(`currently dark mode`) — which otherwise renames an element on every click and
+traps the agent in a loop.
+
+## Layout
+
+All paths below are relative to `dad-cli-main/`, where the project lives.
+
+| Path | Role |
+| --- | --- |
+| `langraph/` | Agent graph: nodes, invariants, traversal tracking |
+| `runtime-discovery/` | Playwright driver, action discovery, the run loop |
+| `knowledge/` | Qdrant vector store, embeddings, confidence feedback |
+| `error-intelligence/` | Post-run analysis pipeline and reporters |
+| `azure-integration/` | Fastify API over Cosmos DB, Vision, and Monitor |
+| `testpilot-graph-ui/` | React + React Flow dashboard for replaying runs |
+| `vscode-extension/` | Run the agent from inside VS Code |
 
 ## Setup
 
-### 1. Install Dependencies
+### 1. Dependencies
+
 ```bash
+cd dad-cli-main
 npm install
-cd runtime-discovery && npm install
-cd ../vscode-extension && npm install
+cd runtime-discovery && npm install && npx playwright install chromium
+cd ../azure-integration && npm install
+cd ../testpilot-graph-ui && npm install
 ```
 
-### 2. Start Qdrant Vector Database
+### 2. Vector database
 
-**Windows (PowerShell):**
-```powershell
-# Using Docker (recommended)
-docker run -p 6333:6333 -v ${PWD}/qdrant_data:/qdrant/storage qdrant/qdrant
-
-# Or download binary
-Invoke-WebRequest -Uri "https://github.com/qdrant/qdrant/releases/latest/download/qdrant-x86_64-pc-windows-msvc.zip" -OutFile "qdrant.zip"
-Expand-Archive -Path "qdrant.zip" -DestinationPath "."
-.\qdrant.exe
-```
-
-**Windows (CMD):**
-```cmd
-# Using Docker (recommended)
-docker run -p 6333:6333 -v %cd%/qdrant_data:/qdrant/storage qdrant/qdrant
-
-# Or download binary
-curl -L https://github.com/qdrant/qdrant/releases/latest/download/qdrant-x86_64-pc-windows-msvc.zip -o qdrant.zip
-tar -xf qdrant.zip
-qdrant.exe
-```
-
-**Linux/macOS:**
 ```bash
-# Using Docker (recommended)
 docker run -p 6333:6333 -v $(pwd)/qdrant_data:/qdrant/storage qdrant/qdrant
-
-# Or download binary
-wget https://github.com/qdrant/qdrant/releases/latest/download/qdrant-x86_64-unknown-linux-gnu.tar.gz
-tar -xzf qdrant-x86_64-unknown-linux-gnu.tar.gz
-./qdrant
+npm run create-collection
 ```
 
-**Initialize Collection:**
+The agent degrades gracefully when Qdrant is unavailable — it explores without
+memory rather than failing.
 
-*PowerShell:*
-```powershell
-node createCollection.ts
-```
+### 3. Configuration
 
-*CMD:*
-```cmd
-node createCollection.ts
-```
+Every service reads its secrets from the environment; nothing is committed.
 
-*Linux/macOS:*
 ```bash
-node createCollection.ts
-```
-
-### 3. Configure Environment (Optional)
-```bash
-# Copy and edit .env for Azure/OpenAI embeddings
 cp .env.example .env
-# Edit OPENAI_API_KEY, AZURE_* settings
-# Default uses local embeddings (@xenova/transformers)
+cp .env.example runtime-discovery/.env
+cp azure-integration/.env.example azure-integration/.env
+cp testpilot-graph-ui/.env.example testpilot-graph-ui/.env
 ```
 
-### 4. Install Playwright Browsers
-```bash
-cd runtime-discovery
-npx playwright install
-```
+One shared API key protects the backend. It must match in three places:
+`API_KEY` (backend), `TESTPILOT_API_KEY` (agent), `VITE_API_KEY` (dashboard).
+
+Embeddings default to a local MiniLM model (384-dim, no API key needed). Set
+`EMBEDDING_PROVIDER=azure` to use Azure OpenAI instead.
 
 ## Usage
 
-### Run Autonomous Testing
 ```bash
-cd runtime-discovery
-npm run start https://your-app-url.com
+npm start https://your-app.com          # headless
+npm run start-headful https://your-app.com   # watch it work
+
+npm run server        # backend API on :5050
+npm run dashboard     # run replay UI on :5173
+
+npm test              # unit tests
+npm run typecheck     # strict TypeScript, no emit
 ```
 
-### Test Knowledge Base
-```bash
-node testKB.ts
-```
-
-### Analyze Results
-```bash
-node error-intelligence/pipeline.js runs/<run-id>.json reports/analysis.json
-```
-
-## Architecture
-
-### 🧠 LangGraph Agent Pipeline
-- **Anomaly Detection** - Identifies UI/network issues
-- **Diagnosis** - Analyzes root causes  
-- **Memory** - Maintains testing context
-- **Decision Engine** - AI-powered action selection
-- **Executor** - Safe action execution with confidence thresholds
-- **Validator** - Result verification
-- **Learner** - Knowledge accumulation
-
-### 🔍 Runtime Discovery
-- Dynamic UI action discovery (buttons, links, forms, inputs, selects)
-- Network monitoring and console error tracking
-- Screenshot capture with stability detection
-- Playwright-based browser automation
-
-### 📊 Error Intelligence
-- Multi-stage analysis pipeline
-- Azure Vision safety checks
-- Performance monitoring
-- Evidence correlation (screenshots + network traces)
-
-### 🧮 Knowledge Management
-- **Qdrant Vector Database** (port 6333)
-- **Local Embeddings** (@xenova/transformers, 384-dim)
-- **Azure Embeddings** (optional, 1536-dim)
-- Semantic search for learned behaviors
-- Success/failure pattern recognition
-- Confidence scoring for solutions
-
-## VS Code Integration
+Post-run analysis:
 
 ```bash
-cd vscode-extension
-npm run compile
-# Press F5 to launch extension development host
+npx tsx error-intelligence/pipeline.ts runs/<run-id>-graph.json reports/analysis.json
 ```
 
-## Output Structure
+## Output
 
-- **`runs/`** - Test execution traces (JSON)
-- **`screenshots/`** - UI screenshots during testing
-- **`reports/`** - Analysis reports
-- **`qdrant_data/`** - Vector database storage
-- **Knowledge Base** - Stored at `http://localhost:6333`
+- `runs/` — traversal graph per run (nodes, edges, metadata)
+- `screenshots/` — a capture per state and per action
+- `reports/` — analysis output
+- Cosmos DB — run, step, and anomaly records when the backend is configured
+
+## VS Code extension
+
+```bash
+npm run compile-extension
+# then press F5 to launch an extension development host
+```
+
+Adds a **TestPilot** activity-bar view and a `TestPilot: Start` command that
+prompts for a URL and runs the agent in an integrated terminal.
 
 ## Troubleshooting
 
-**Qdrant Connection Issues:**
-```bash
-# Check if Qdrant is running
-curl http://localhost:6333/collections
+**Qdrant unreachable** — `curl http://localhost:6333/collections`. The agent
+logs a warning and continues without memory.
 
-# Restart Qdrant
-docker restart <qdrant-container-id>
-```
+**Backend returns 401** — `TESTPILOT_API_KEY` does not match `API_KEY`.
 
-**Missing Dependencies:**
-```bash
-# Install all dependencies
-npm install
-cd runtime-discovery && npm install
-cd ../vscode-extension && npm install
-```
+**Agent finds no actions** — the page may render after `networkidle`; the
+stability wait is in `runtime-discovery/src/waitForStability.ts`.

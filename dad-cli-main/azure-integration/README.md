@@ -32,7 +32,7 @@ notepad .env
 # =============================
 AZURE_COSMOS_ENDPOINT=
 AZURE_COSMOS_KEY=
-AZURE_COSMOS_DB=dad-db
+AZURE_COSMOS_DB=testpilot-db
 
 # =============================
 # Azure Vision
@@ -72,7 +72,7 @@ Choose **Cosmos DB for NoSQL**
 **Fill:**
 | Field | Value |
 |-------|-------|
-| Resource group | `rg-dad` |
+| Resource group | `rg-testpilot` |
 | Account name | any unique |
 | Location | Central India |
 | Capacity | Serverless |
@@ -91,7 +91,7 @@ Choose **Cosmos DB for NoSQL**
 ### 3.3 Create Database
 **Data Explorer** → **New Database**
 
-**Name:** `dad-db`
+**Name:** `testpilot-db`
 
 **Inside it** → **New Container:**
 - **Container:** `logs`
@@ -107,8 +107,8 @@ Azure AI Vision
 **Create:**
 | Field | Value |
 |-------|-------|
-| Name | `dad-vision` |
-| Resource group | `rg-dad` |
+| Name | `testpilot-vision` |
+| Resource group | `rg-testpilot` |
 | Region | Central India |
 | Pricing | Free (F0) |
 
@@ -128,8 +128,8 @@ Log Analytics workspace
 ```
 
 **Create:**
-- **Name:** `dad-logs`
-- **Resource group:** `rg-dad`
+- **Name:** `testpilot-logs`
+- **Resource group:** `rg-testpilot`
 
 ### 5.2 Copy ID
 **Open workspace** → copy:
@@ -144,7 +144,7 @@ App registrations
 ```
 
 **New registration:**
-- **Name:** `dad-azure-auth`
+- **Name:** `testpilot-azure-auth`
 
 ### 6.2 Copy IDs
 **From Overview:**
@@ -169,7 +169,7 @@ Log Analytics workspace
 
 **Assign to:**
 ```
-dad-azure-auth
+testpilot-azure-auth
 ```
 
 **Wait 2 minutes.**
@@ -178,9 +178,9 @@ dad-azure-auth
 ```env
 AZURE_COSMOS_ENDPOINT=https://xxx.documents.azure.com/
 AZURE_COSMOS_KEY=xxxxxxxx
-AZURE_COSMOS_DB=dad-db
+AZURE_COSMOS_DB=testpilot-db
 
-AZURE_VISION_ENDPOINT=https://dad-vision.cognitiveservices.azure.com/
+AZURE_VISION_ENDPOINT=https://testpilot-vision.cognitiveservices.azure.com/
 AZURE_VISION_KEY=xxxxxxxx
 
 AZURE_TENANT_ID=xxxxxxxx

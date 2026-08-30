@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import type { Node } from "reactflow";
-import axios from "axios";
+import { analyzeScreenshotLocal, screenshotUrl } from "../api/graph";
 
 type Props = {
   node: Node | null;
@@ -33,17 +33,8 @@ export default function Inspector({ node }: Props) {
 
     try {
       const filename = d.screenshotUrl.split('/').pop();
-      const screenshotPath = `screenshots/${filename}`;
-
-      const response = await axios.post('http://localhost:5050/vision/analyze-local', {
-        screenshotPath
-      }, {
-        headers: {
-          "x-api-key": "daddychill123supersecretkey"
-        }
-      });
-
-      setAnalysis(response.data);
+      const data = await analyzeScreenshotLocal(`screenshots/${filename}`);
+      setAnalysis(data);
     } catch (error) {
       console.error('Vision analysis failed:', error);
       setAnalysis({ error: "Analysis failed" });
@@ -59,7 +50,7 @@ export default function Inspector({ node }: Props) {
         {d.screenshotUrl && (
           <div className="space-y-3">
             <img
-              src={`http://localhost:5050/graph${d.screenshotUrl}`}
+              src={screenshotUrl(d.screenshotUrl)}
               className="w-full rounded border shadow-inner"
               alt="Screenshot"
             />
@@ -105,9 +96,12 @@ export default function Inspector({ node }: Props) {
 
       <div className="bg-white p-3 rounded-lg shadow-sm border space-y-2 text-sm overflow-hidden text-wrap">
         <h3 className="font-bold mb-1 text-gray-700 border-b pb-1">Execution Details</h3>
-        <p><b className="text-gray-500">Action:</b> <span className="font-mono bg-gray-100 px-1 rounded break-all">{d.action?.type || "unknown"}</span></p>
-        <p><b className="text-gray-500">Selector:</b> <span className="font-mono text-[11px] break-all">{d.action?.selector || "N/A"}</span></p>
-        <p><b className="text-gray-500">Value:</b> <span className="font-mono break-all">{d.action?.value || "—"}</span></p>
+        {/* The graph API returns actionTaken / selectorUsed at the top level of
+            the node payload. Reading d.action.* showed "unknown" for every node. */}
+        <p><b className="text-gray-500">Action:</b> <span className="font-mono bg-gray-100 px-1 rounded break-all">{d.actionTaken || "unknown"}</span></p>
+        <p><b className="text-gray-500">Selector:</b> <span className="font-mono text-[11px] break-all">{d.selectorUsed || "N/A"}</span></p>
+        <p><b className="text-gray-500">State ID:</b> <span className="font-mono break-all">{d.stateId || d.id || "—"}</span></p>
+        <p><b className="text-gray-500">Route:</b> <span className="font-mono break-all">{d.url || "—"}</span></p>
         <p><b className="text-gray-500">Reasoning:</b> <span className="italic break-words whitespace-pre-wrap">{d.reasoning || "No reasoning provided by AI."}</span></p>
 
         {d.error && (

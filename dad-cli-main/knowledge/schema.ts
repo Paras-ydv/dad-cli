@@ -5,6 +5,7 @@ export type KnowledgeType =
   | "flow"
   | "metric"
   | "pattern"
+  | "exploration"
   | "observation";
 
 /**

@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 
-export class DadViewProvider implements vscode.WebviewViewProvider {
+export class TestPilotViewProvider implements vscode.WebviewViewProvider {
   constructor(private readonly context: vscode.ExtensionContext) {}
 
   resolveWebviewView(view: vscode.WebviewView) {
@@ -12,8 +12,8 @@ export class DadViewProvider implements vscode.WebviewViewProvider {
       <!DOCTYPE html>
       <html>
         <body>
-          <h3>DAD Agent</h3>
-          <button id="start">▶ Start DAD Test</button>
+          <h3>TestPilot AI</h3>
+          <button id="start">▶ Start TestPilot Test</button>
 
           <script>
             const vscode = acquireVsCodeApi();
@@ -27,7 +27,7 @@ export class DadViewProvider implements vscode.WebviewViewProvider {
 
     view.webview.onDidReceiveMessage(msg => {
       if (msg.command === "start") {
-        vscode.commands.executeCommand("dad.start");
+        vscode.commands.executeCommand("testpilot.start");
       }
     });
   }

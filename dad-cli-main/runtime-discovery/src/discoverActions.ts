@@ -16,9 +16,8 @@ export async function discoverActions(page: Page): Promise<DiscoveredAction[]> {
       const results = [];
 
       // Find buttons
-      const buttons = document.querySelectorAll('button');
-      for (let i = 0; i < buttons.length; i++) {
-        const btn = buttons[i];
+      const buttons = Array.from(document.querySelectorAll('button'));
+      for (const btn of buttons) {
         let text = btn.textContent ? btn.textContent.trim() : "";
         const ariaLabel = btn.getAttribute('aria-label');
         const title = btn.getAttribute('title');
@@ -45,9 +44,8 @@ export async function discoverActions(page: Page): Promise<DiscoveredAction[]> {
       }
 
       // Find links
-      const links = document.querySelectorAll('a[href]');
-      for (let i = 0; i < links.length; i++) {
-        const link = links[i];
+      const links = Array.from(document.querySelectorAll('a[href]'));
+      for (const link of links) {
         let text = link.textContent ? link.textContent.trim() : "";
         const ariaLabel = link.getAttribute('aria-label');
         const title = link.getAttribute('title');
@@ -73,9 +71,9 @@ export async function discoverActions(page: Page): Promise<DiscoveredAction[]> {
       }
 
       // Find inputs
-      const inputs = document.querySelectorAll('input, textarea');
-      for (let i = 0; i < inputs.length; i++) {
-        const input = inputs[i] as HTMLInputElement | HTMLTextAreaElement;
+      const inputs = Array.from(document.querySelectorAll('input, textarea'));
+      inputs.forEach((node, i) => {
+        const input = node as HTMLInputElement | HTMLTextAreaElement;
         const type = input.type || 'text';
         const placeholder = input.placeholder || input.name || ("input_" + i);
         const rect = input.getBoundingClientRect();
@@ -100,12 +98,11 @@ export async function discoverActions(page: Page): Promise<DiscoveredAction[]> {
             inputType: type
           });
         }
-      }
+      });
 
       // Find selects
-      const selects = document.querySelectorAll('select');
-      for (let i = 0; i < selects.length; i++) {
-        const select = selects[i];
+      const selects = Array.from(document.querySelectorAll('select'));
+      selects.forEach((select, i) => {
         const name = select.name || ("select_" + i);
         const options = Array.from(select.options).map(opt => opt.text);
         const rect = select.getBoundingClientRect();
@@ -120,7 +117,7 @@ export async function discoverActions(page: Page): Promise<DiscoveredAction[]> {
           viewportSafe: visible,
           options: options
         });
-      }
+      });
 
       return results;
     });

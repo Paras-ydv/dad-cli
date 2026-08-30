@@ -30,8 +30,8 @@ class GraphStorage {
     }
   }
 
-  createRun(): string {
-    const runId = `run-${Date.now()}-${uuidv4().slice(0, 8)}`;
+  createRun(runId?: string): string {
+    runId = runId || `run-${Date.now()}-${uuidv4().slice(0, 8)}`;
     this.runs.set(runId, {
       runId,
       nodes: [],
